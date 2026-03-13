@@ -136,7 +136,7 @@ model User {
 
 model ClassGroup {
   id            String       @id @default(uuid())
-  name          String       @unique
+  name          String
   institutionId String?
   institution   Institution? @relation(fields: [institutionId], references: [id])
   leaderId      String?
@@ -153,6 +153,8 @@ model ClassGroup {
   members     ClassGroupMember[]
   studyEvents StudyEvent[]
   reports     Report[]
+
+  @@unique([name, institutionId])
 }
 
 // ─── ClassGroup Request / Membership ─────────────────────────────────────────

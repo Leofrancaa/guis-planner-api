@@ -9,7 +9,51 @@ import { createNotification, notifyAdmins } from '../lib/notify';
 const router = Router();
 router.use(authenticateToken);
 
-// POST /api/class-groups/request — premium only
+// POST /api/class-groups — direct creation (no admin needed)
+router.post('/', validate(classGroupRequestSchema), async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, institutionId } = req.body;
+    const userId = req.user!.userId;
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { institutionId: true } });
+    if (!user?.institutionId || user.institutionId !== institutionId) {
+      return res.status(403).json({ error: 'Você só pode criar turmas para a sua instituição.' });
+    }
+
+    // Check if class already exists in this institution
+    const existing = await prisma.classGroup.findFirst({
+      where: { 
+        name: name.trim(),
+        institutionId: institutionId
+      }
+    });
+
+    if (existing) {
+      return res.status(409).json({ error: 'Já existe uma turma com este nome nesta instituição.' });
+    }
+
+    // Create the class group directly
+    const group = await prisma.classGroup.create({
+      data: {
+        name: name.trim(),
+        institutionId,
+        leaderId: userId,
+      }
+    });
+
+    // Add creator as LEADER
+    await prisma.classGroupMember.create({
+      data: { userId, classGroupId: group.id, role: 'LEADER' }
+    });
+
+    res.status(201).json(group);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno ao criar turma.' });
+  }
+});
+
+// POST /api/class-groups/request — keep for backwards compat if needed, or remove later
 router.post('/request', checkPremium, validate(classGroupRequestSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { name, institutionId } = req.body;
