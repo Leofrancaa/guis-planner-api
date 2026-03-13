@@ -3,83 +3,366 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum Role {
   ADMIN
   STUDENT
+  BANNED
+}
+
+enum Plan {
+  FREE
+  PREMIUM
+}
+
+enum ClassGroupStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ClassGroupRole {
+  MEMBER
+  LEADER
+}
+
+enum SubjectClassStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum EnrollmentStatus {
+  ENROLLED
+  APPROVED
+  FAILED
+  LOCKED
+}
+
+enum MaterialType {
+  EXAM
+  EXERCISE_LIST
+  SUMMARY
+}
+
+enum MaterialStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StudyMethod {
+  DISCORD
+  MEET
+  ZOOM
+  PRESENCIAL
+}
+
+enum NotificationType {
+  TURMA_APPROVED
+  TURMA_REJECTED
+  MEMBER_JOINED
+  MATERIAL_VALIDATED
+  STUDY_EVENT_CREATED
+  REPORT_RECEIVED
+}
+
+enum ReportStatus {
+  OPEN
+  WARNED
+  REMOVED
+  BANNED
+}
+
+// ─── Core Models ─────────────────────────────────────────────────────────────
+
+model Institution {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  createdAt   DateTime    @default(now())
+
+  users       User[]
+  classGroups ClassGroup[]
+  materials   Material[]
 }
 
 model User {
-  id           String         @id @default(uuid())
-  username     String         @unique
-  password     String
-  name         String
-  role         Role           @default(STUDENT)
+  id                     String    @id @default(uuid())
+  username               String    @unique
+  password               String
+  name                   String
+  role                   Role      @default(STUDENT)
+  edag                   Float?
+
+  // Institution & plan
+  institutionId          String?
+  institution            Institution?  @relation(fields: [institutionId], references: [id])
+  plan                   Plan          @default(FREE)
+  premiumUntil           DateTime?
+  points                 Int           @default(0)
+  termsAcceptedAt        DateTime?
+  hasReceivedLeaderBonus Boolean       @default(false)
+
+  // Legacy: kept for backwards compat
   classGroupId String?
-  classGroup   ClassGroup?    @relation(fields: [classGroupId], references: [id])
-  edag         Float?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-
-  // Relations
-  studentSubjects StudentSubject[]
-  pushSubscriptions PushSubscription[]
-}
-
-model ClassGroup {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  users     User[]
-  subjects  Subject[]
-  events    Event[]
-}
-
-model Subject {
-  id           String      @id @default(uuid())
-  name         String
-  professor    String
-  color        String
-  hours        Int         // 30, 60, 90, 105
-  
-  // Scoping: Either belongs to a class or an individual user
-  classGroupId String?
-  classGroup   ClassGroup? @relation(fields: [classGroupId], references: [id])
-  studentId    String?     // For individual/extra subjects
-  
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  studentSubjects StudentSubject[]
-  notes           Note[]
-  events          Event[]
-}
-
-model StudentSubject {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subjectId String
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  
-  absences  Int      @default(0)
-
-  // Grades
-  av1       Float?
-  av2       Float?
-  av3       Float?
+  classGroup   ClassGroup? @relation("ClassGroupUsers", fields: [classGroupId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relations
+  studentSubjects   StudentSubject[]
+  pushSubscriptions PushSubscription[]
+
+  // New relations
+  ledClassGroups     ClassGroup[]        @relation("ClassGroupLeader")
+  memberships        ClassGroupMember[]
+  classGroupRequests ClassGroupRequest[]
+  enrollments        Enrollment[]
+  ratings            ProfessorRating[]
+  gradeConfigs       GradeConfig[]
+  materials          Material[]
+  studyEventRsvps    StudyEventRsvp[]
+  notifications      Notification[]
+  reports            Report[]            @relation("ReportedUser")
+  reportsMade        Report[]            @relation("ReporterUser")
+  studyEventsCreated StudyEvent[]
+}
+
+model ClassGroup {
+  id            String       @id @default(uuid())
+  name          String       @unique
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  leaderId      String?
+  leader        User?        @relation("ClassGroupLeader", fields: [leaderId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Legacy
+  users    User[]    @relation("ClassGroupUsers")
+  subjects Subject[]
+  events   Event[]
+
+  // New relations
+  members     ClassGroupMember[]
+  studyEvents StudyEvent[]
+  reports     Report[]
+}
+
+// ─── ClassGroup Request / Membership ─────────────────────────────────────────
+
+model ClassGroupRequest {
+  id            String           @id @default(uuid())
+  requesterId   String
+  requester     User             @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  name          String
+  institutionId String?
+  status        ClassGroupStatus @default(PENDING)
+  adminNote     String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model ClassGroupMember {
+  id           String         @id @default(uuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classGroupId String
+  classGroup   ClassGroup     @relation(fields: [classGroupId], references: [id], onDelete: Cascade)
+  role         ClassGroupRole @default(MEMBER)
+  joinedAt     DateTime       @default(now())
+
+  @@unique([userId, classGroupId])
+}
+
+// ─── Subjects ────────────────────────────────────────────────────────────────
+
+model Subject {
+  id          String             @id @default(uuid())
+  name        String
+  professor   String
+  color       String
+  hours       Int
+  code        String?
+  classStatus SubjectClassStatus @default(ACTIVE)
+
+  // Scoping
+  classGroupId String?
+  classGroup   ClassGroup? @relation(fields: [classGroupId], references: [id])
+  studentId    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  studentSubjects StudentSubject[]
+  notes           Note[]
+  events          Event[]
+  enrollments     Enrollment[]
+  ratings         ProfessorRating[]
+  materials       Material[]
+  studyEvents     StudyEvent[]
+}
+
+model StudentSubject {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId        String
+  subject          Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  absences         Int              @default(0)
+  av1              Float?
+  av2              Float?
+  av3              Float?
+  enrollmentStatus EnrollmentStatus @default(ENROLLED)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
   @@unique([userId, subjectId])
 }
+
+// ─── Enrollment + Grade Config ────────────────────────────────────────────────
+
+model Enrollment {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  status    EnrollmentStatus @default(ENROLLED)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  gradeConfigs GradeConfig[]
+
+  @@unique([userId, subjectId])
+}
+
+model GradeConfig {
+  id           String     @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String
+  weight       Float
+  order        Int
+  grade        Float?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([enrollmentId, label])
+}
+
+// ─── Professor Ratings ────────────────────────────────────────────────────────
+
+model ProfessorRating {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId       String
+  subject         Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  professor       String
+  didatica        Int
+  clareza         Int
+  disponibilidade Int
+  pontualidade    Int
+  dificuldade     Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, subjectId, professor])
+}
+
+// ─── Materials ────────────────────────────────────────────────────────────────
+
+model Material {
+  id            String         @id @default(uuid())
+  uploaderId    String
+  uploader      User           @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution    @relation(fields: [institutionId], references: [id])
+  subjectName   String
+  professor     String
+  course        String
+  semester      String
+  type          MaterialType
+  fileUrl       String
+  status        MaterialStatus @default(PENDING)
+  adminNote     String?
+  subjectId     String?
+  subject       Subject?       @relation(fields: [subjectId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+// ─── Study Events ─────────────────────────────────────────────────────────────
+
+model StudyEvent {
+  id           String      @id @default(uuid())
+  creatorId    String
+  creator      User        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classGroupId String
+  classGroup   ClassGroup  @relation(fields: [classGroupId], references: [id], onDelete: Cascade)
+  date         DateTime
+  method       StudyMethod
+  link         String?
+  createdAt    DateTime    @default(now())
+
+  rsvps StudyEventRsvp[]
+}
+
+model StudyEventRsvp {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyEventId String
+  studyEvent   StudyEvent @relation(fields: [studyEventId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, studyEventId])
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  read      Boolean          @default(false)
+  refId     String?
+  createdAt DateTime         @default(now())
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
+model Report {
+  id           String       @id @default(uuid())
+  reporterId   String
+  reporter     User         @relation("ReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedId   String
+  reported     User         @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+  classGroupId String
+  classGroup   ClassGroup   @relation(fields: [classGroupId], references: [id], onDelete: Cascade)
+  reason       String
+  status       ReportStatus @default(OPEN)
+  adminNote    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+// ─── Push Subscriptions ───────────────────────────────────────────────────────
 
 model PushSubscription {
   id        String   @id @default(uuid())
@@ -91,22 +374,19 @@ model PushSubscription {
   createdAt DateTime @default(now())
 }
 
+// ─── Events & Notes ───────────────────────────────────────────────────────────
+
 model Event {
   id           String      @id @default(uuid())
   title        String
   date         DateTime
-  type         String      // CLASS, ASSIGNMENT, EXAM
+  type         String
   subjectId    String?
   subject      Subject?    @relation(fields: [subjectId], references: [id])
-  
   classGroupId String?
   classGroup   ClassGroup? @relation(fields: [classGroupId], references: [id])
-  
-  // Optional individual event
   studentId    String?
-  
   completed    Boolean     @default(false)
-
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 }
@@ -117,10 +397,7 @@ model Note {
   content   String
   subjectId String
   subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  
-  // Notes are strictly individual
   studentId String
-  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
