@@ -12,7 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_token_here_c
 const USER_SELECT = {
   id: true, username: true, name: true, role: true, password: true,
   classGroupId: true, plan: true, premiumUntil: true, institutionId: true,
-  edag: true, points: true, hasReceivedLeaderBonus: true,
+  points: true, hasReceivedLeaderBonus: true,
 } as const;
 
 function isValidUsername(username: string): boolean {
@@ -22,7 +22,7 @@ function isValidUsername(username: string): boolean {
 type UserRow = {
   id: string; username: string; name: string; role: any;
   classGroupId?: string | null; plan: any; premiumUntil?: Date | null;
-  institutionId?: string | null; edag?: number | null; points: number;
+  institutionId?: string | null; points: number;
   hasReceivedLeaderBonus: boolean;
 };
 
@@ -38,7 +38,6 @@ function buildUserPayload(user: UserRow) {
                              ? user.premiumUntil.toISOString()
                              : user.premiumUntil ?? null,
     institutionId:         user.institutionId ?? null,
-    edag:                  user.edag ?? null,
     points:                user.points,
     hasReceivedLeaderBonus: user.hasReceivedLeaderBonus,
   };
@@ -135,34 +134,11 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
     const token = buildToken(user as any);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _pw, ...userWithoutPassword } = user as any;
-    res.status(201).json({ token, user: buildUserPayload(userWithoutPassword as UserRow) });
-  } catch (err) {
+    res.json(buildUserPayload(user as any));
+    } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno.' });
-  }
-});
-
-// PUT /api/auth/edag
-router.put('/edag', authenticateToken, validate(edagSchema), async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.userId;
-    const { edag } = req.body;
-
-    const user = await prisma.user.update({
-      where:  { id: userId },
-      data:   { edag: edag ?? null },
-      select: {
-        id: true, username: true, name: true, role: true, classGroupId: true,
-        edag: true, plan: true, premiumUntil: true, institutionId: true,
-        points: true, hasReceivedLeaderBonus: true,
-      } as any,
+    }
     });
 
-    res.json(buildUserPayload(user as any));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erro interno.' });
-  }
-});
-
-export default router;
+    export default router;

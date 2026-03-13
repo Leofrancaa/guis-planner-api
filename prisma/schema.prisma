@@ -97,7 +97,6 @@ model User {
   password               String
   name                   String
   role                   Role      @default(STUDENT)
-  edag                   Float?
 
   // Institution & plan
   institutionId          String?

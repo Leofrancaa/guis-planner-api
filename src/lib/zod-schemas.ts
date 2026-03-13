@@ -23,10 +23,6 @@ export const registerSchema = z.object({
   }),
 });
 
-export const edagSchema = z.object({
-  edag: z.number().min(0).max(10).nullable(),
-});
-
 // ─── Subjects ─────────────────────────────────────────────────────────────────
 
 export const createSubjectSchema = z.object({
