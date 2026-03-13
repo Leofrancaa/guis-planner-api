@@ -41,6 +41,10 @@ app.use('/api', limiter);
 app.use(express.json());
 
 // Basic health check
+app.get('/', (req, res) => {
+  res.status(200).json({ message: 'Guis Planner API is running', status: 'ok' });
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
