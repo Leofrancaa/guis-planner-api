@@ -48,8 +48,6 @@ import subjectsRoutes from './routes/subjects';
 import eventsRoutes from './routes/events';
 import notesRoutes from './routes/notes';
 import pushRoutes, { webpush } from './routes/push';
-import cron from 'node-cron';
-import webpushLib from 'web-push';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/users', adminRoutes);
@@ -118,6 +116,7 @@ async function sendEventNotifications() {
         body: typeLabel,
       });
 
+      const webpushLib = require('web-push');
       for (const sub of subscriptions) {
         try {
           await webpushLib.sendNotification(
@@ -138,6 +137,7 @@ export default app;
 
 // In serverless (Vercel) the handler is exported above — no listen needed.
 if (!process.env.VERCEL) {
+  const cron = require('node-cron');
   app.listen(PORT, async () => {
     console.log(`Server is running on port ${PORT}`);
     // Ensure default class group exists
