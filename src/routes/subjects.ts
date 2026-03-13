@@ -13,15 +13,20 @@ router.use(authenticateToken);
 // ─── GET subjects ─────────────────────────────────────────────────────────────
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const userId       = req.user!.userId;
-    const classGroupId = req.user!.classGroupId;
+    const userId = req.user!.userId;
+
+    // Find all class group IDs the user belongs to
+    const memberships = await prisma.classGroupMember.findMany({
+      where: { userId },
+      select: { classGroupId: true }
+    });
+    const classGroupIds = memberships.map(m => m.classGroupId);
 
     const subjects = await prisma.subject.findMany({
       where: {
         OR: [
-          { classGroupId: classGroupId || undefined },
+          { classGroupId: { in: classGroupIds } },
           { studentId: userId },
-          // Also fetch via enrollment
           { enrollments: { some: { userId } } },
         ],
       },
