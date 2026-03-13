@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+model User {
+  id           String         @id @default(uuid())
+  username     String         @unique
+  password     String
+  name         String
+  role         Role           @default(STUDENT)
+  classGroupId String?
+  classGroup   ClassGroup?    @relation(fields: [classGroupId], references: [id])
+  edag         Float?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  studentSubjects StudentSubject[]
+  pushSubscriptions PushSubscription[]
+}
+
+model ClassGroup {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users     User[]
+  subjects  Subject[]
+  events    Event[]
+}
+
+model Subject {
+  id           String      @id @default(uuid())
+  name         String
+  professor    String
+  color        String
+  hours        Int         // 30, 60, 90, 105
+  
+  // Scoping: Either belongs to a class or an individual user
+  classGroupId String?
+  classGroup   ClassGroup? @relation(fields: [classGroupId], references: [id])
+  studentId    String?     // For individual/extra subjects
+  
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  studentSubjects StudentSubject[]
+  notes           Note[]
+  events          Event[]
+}
+
+model StudentSubject {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  absences  Int      @default(0)
+
+  // Grades
+  av1       Float?
+  av2       Float?
+  av3       Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, subjectId])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model Event {
+  id           String      @id @default(uuid())
+  title        String
+  date         DateTime
+  type         String      // CLASS, ASSIGNMENT, EXAM
+  subjectId    String?
+  subject      Subject?    @relation(fields: [subjectId], references: [id])
+  
+  classGroupId String?
+  classGroup   ClassGroup? @relation(fields: [classGroupId], references: [id])
+  
+  // Optional individual event
+  studentId    String?
+  
+  completed    Boolean     @default(false)
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  // Notes are strictly individual
+  studentId String
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
