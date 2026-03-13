@@ -8,6 +8,12 @@ import { PrismaClient } from '@prisma/client';
 dotenv.config();
 
 export const prisma = new PrismaClient();
+
+// Catch initialization errors
+prisma.$connect().catch(err => {
+  console.error('Failed to connect to database during init:', err);
+});
+
 const app = express();
 
 // Security Middlewares

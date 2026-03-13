@@ -10,7 +10,11 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_EMAIL = process.env.VAPID_EMAIL ? (process.env.VAPID_EMAIL.startsWith('mailto:') ? process.env.VAPID_EMAIL : `mailto:${process.env.VAPID_EMAIL}`) : 'mailto:admin@guisplanner.app';
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  try {
+    webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  } catch (err) {
+    console.error('Failed to set VAPID details:', err);
+  }
 }
 
 // GET /api/push/vapid-public-key — no auth required
