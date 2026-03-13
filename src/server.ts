@@ -134,22 +134,27 @@ async function sendEventNotifications() {
   }
 }
 
-app.listen(PORT, async () => {
-  console.log(`Server is running on port ${PORT}`);
-  // Ensure default class group exists
-  try {
-    await prisma.classGroup.upsert({
-      where: { name: 'Computação 9° Semestre' },
-      update: {},
-      create: { name: 'Computação 9° Semestre' }
-    });
-  } catch (e) {
-    console.error('Failed to seed class group:', e);
-  }
+export default app;
 
-  // Daily notification cron — 08:00 every day
-  cron.schedule('0 8 * * *', () => {
-    sendEventNotifications().catch(console.error);
+// In serverless (Vercel) the handler is exported above — no listen needed.
+if (!process.env.VERCEL) {
+  app.listen(PORT, async () => {
+    console.log(`Server is running on port ${PORT}`);
+    // Ensure default class group exists
+    try {
+      await prisma.classGroup.upsert({
+        where: { name: 'Computação 9° Semestre' },
+        update: {},
+        create: { name: 'Computação 9° Semestre' }
+      });
+    } catch (e) {
+      console.error('Failed to seed class group:', e);
+    }
+
+    // Daily notification cron — 08:00 every day
+    cron.schedule('0 8 * * *', () => {
+      sendEventNotifications().catch(console.error);
+    });
+    console.log('Push notification cron scheduled (08:00 daily)');
   });
-  console.log('Push notification cron scheduled (08:00 daily)');
-});
+}
