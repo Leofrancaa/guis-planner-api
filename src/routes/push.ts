@@ -7,13 +7,15 @@ const router = Router();
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const VAPID_EMAIL = process.env.VAPID_EMAIL ? (process.env.VAPID_EMAIL.startsWith('mailto:') ? process.env.VAPID_EMAIL : `mailto:${process.env.VAPID_EMAIL}`) : 'mailto:admin@guisplanner.app';
+const rawEmail = process.env.VAPID_EMAIL || 'admin@guisplanner.app';
+const VAPID_EMAIL = rawEmail.includes(':') ? rawEmail : `mailto:${rawEmail}`;
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   try {
+    console.log(`Configuring VAPID with subject: ${VAPID_EMAIL}`);
     webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
   } catch (err) {
-    console.error('Failed to set VAPID details:', err);
+    console.error('CRITICAL: Failed to set VAPID details:', err);
   }
 }
 
