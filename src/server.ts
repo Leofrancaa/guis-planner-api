@@ -17,16 +17,26 @@ prisma.$connect().catch(err => {
 const app = express();
 
 // Security Middlewares
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+const allowedOrigins: (string | RegExp)[] = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  /\.vercel\.app$/
+];
+
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
+
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    const isVercel = origin.endsWith('.vercel.app');
-    const isLocal = origin.includes('localhost');
-    if (isVercel || isLocal) return callback(null, true);
-    callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 const limiter = rateLimit({
