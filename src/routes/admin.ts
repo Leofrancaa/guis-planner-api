@@ -351,6 +351,38 @@ router.post('/institutions', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ─── Class Groups (existing turmas) ───────────────────────────────────────────
+
+router.get('/class-groups', async (_req: AuthRequest, res: Response) => {
+  try {
+    const groups = await prisma.classGroup.findMany({
+      include: {
+        institution: { select: { name: true } },
+        leader:      { select: { id: true, name: true, username: true } },
+        _count:      { select: { members: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(groups);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+router.delete('/class-groups/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const group = await prisma.classGroup.findUnique({ where: { id } });
+    if (!group) return res.status(404).json({ error: 'Turma não encontrada.' });
+    await prisma.classGroup.delete({ where: { id } });
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ─── Legacy endpoints (kept for backwards compat) ─────────────────────────────
 
 router.get('/', async (_req: AuthRequest, res: Response) => {
