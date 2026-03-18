@@ -53,6 +53,15 @@ router.post('/', validate(createSubjectSchema), async (req: AuthRequest, res: Re
     let classGroupId = bodyClassGroupId || req.user!.classGroupId || null;
 
     if (scope === 'CLASS') {
+      // Fallback: find the class group where this user is LEADER (in case JWT classGroupId is stale)
+      if (!classGroupId) {
+        const leaderMembership = await prisma.classGroupMember.findFirst({
+          where: { userId, role: 'LEADER' },
+          orderBy: { joinedAt: 'desc' },
+          select: { classGroupId: true },
+        });
+        classGroupId = leaderMembership?.classGroupId ?? null;
+      }
       if (!classGroupId) return res.status(400).json({ error: 'classGroupId é obrigatório para matérias de turma.' });
 
       // Must be leader of the class group

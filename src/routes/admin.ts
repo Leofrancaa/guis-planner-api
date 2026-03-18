@@ -113,10 +113,16 @@ router.put('/class-group-requests/:id/approve', async (req: AuthRequest, res: Re
       },
     });
 
-    // Add leader as member
-    await prisma.classGroupMember.create({
-      data: { userId: request.requesterId, classGroupId: group.id, role: 'LEADER' },
-    });
+    // Add leader as member and update user.classGroupId for JWT compat
+    await Promise.all([
+      prisma.classGroupMember.create({
+        data: { userId: request.requesterId, classGroupId: group.id, role: 'LEADER' },
+      }),
+      prisma.user.update({
+        where: { id: request.requesterId },
+        data:  { classGroupId: group.id },
+      }),
+    ]);
 
     // Grant 1 month premium if first approved turma
     const requester = (request as any).requester;
