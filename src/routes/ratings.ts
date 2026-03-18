@@ -86,6 +86,68 @@ router.get('/subject/:subjectId', checkPremium, async (req: AuthRequest, res: Re
   }
 });
 
+// GET /api/ratings/institution — all ratings aggregated for user's institution
+router.get('/institution', checkPremium, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+
+    // Get user's institution
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { institutionId: true } });
+    const institutionId = user?.institutionId;
+
+    // Get all subjects from this institution's class groups
+    const where = institutionId && req.user!.role !== 'ADMIN'
+      ? { classGroup: { institutionId } }
+      : {};
+
+    const subjects = await prisma.subject.findMany({
+      where,
+      select: { id: true, name: true, professor: true, classGroup: { select: { name: true } } },
+    });
+
+    const subjectIds = subjects.map(s => s.id);
+    const ratings = await prisma.professorRating.findMany({
+      where: { subjectId: { in: subjectIds } },
+    });
+
+    // Group by subjectId+professor
+    const grouped: Record<string, typeof ratings> = {};
+    for (const r of ratings) {
+      const key = `${r.subjectId}::${r.professor}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(r);
+    }
+
+    const result = Object.entries(grouped).map(([key, list]) => {
+      const [subjectId] = key.split('::');
+      const subject = subjects.find(s => s.id === subjectId);
+      const avg = (field: keyof (typeof list)[0]) =>
+        Math.round(list.reduce((sum, r) => sum + (r[field] as number), 0) / list.length * 10) / 10;
+
+      return {
+        subjectId,
+        subjectName:      subject?.name ?? '',
+        professor:        list[0].professor,
+        classGroupName:   subject?.classGroup?.name,
+        totalRatings:     list.length,
+        avgDidatica:      avg('didatica'),
+        avgClareza:       avg('clareza'),
+        avgDisponibilidade: avg('disponibilidade'),
+        avgPontualidade:  avg('pontualidade'),
+        avgDificuldade:   avg('dificuldade'),
+      };
+    });
+
+    // Sort by most rated
+    result.sort((a, b) => b.totalRatings - a.totalRatings);
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // GET /api/ratings/my/:subjectId — user's own rating
 router.get('/my/:subjectId', async (req: AuthRequest, res: Response) => {
   try {
