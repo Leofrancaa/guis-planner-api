@@ -147,7 +147,6 @@ router.post('/:id/enroll', async (req: AuthRequest, res: Response) => {
       where:  { userId_subjectId: { userId, subjectId } },
       update: {},
       create: { userId, subjectId, status: 'ENROLLED' },
-      include: { gradeConfigs: true },
     });
 
     // Backward compat: also create StudentSubject
@@ -157,27 +156,35 @@ router.post('/:id/enroll', async (req: AuthRequest, res: Response) => {
       create: { userId, subjectId },
     });
 
-    // Copy grade config from leader's enrollment if none exists
-    if (enrollment.gradeConfigs.length === 0 && subject.classGroupId) {
-      const classGroup = await prisma.classGroup.findUnique({
-        where: { id: subject.classGroupId },
-        select: { leaderId: true },
-      });
-      if (classGroup?.leaderId && classGroup.leaderId !== userId) {
-        const leaderEnrollment = await prisma.enrollment.findUnique({
-          where:   { userId_subjectId: { userId: classGroup.leaderId, subjectId } },
-          include: { gradeConfigs: { orderBy: { order: 'asc' } } },
+    // Copy grade config structure from leader's enrollment if this enrollment has none
+    if (subject.classGroupId) {
+      const existingConfigs = await prisma.gradeConfig.count({ where: { enrollmentId: enrollment.id } });
+      if (existingConfigs === 0) {
+        const classGroup = await prisma.classGroup.findUnique({
+          where: { id: subject.classGroupId },
+          select: { leaderId: true },
         });
-        if (leaderEnrollment && leaderEnrollment.gradeConfigs.length > 0) {
-          await prisma.gradeConfig.createMany({
-            data: leaderEnrollment.gradeConfigs.map(gc => ({
-              enrollmentId: enrollment.id,
-              label:  gc.label,
-              weight: gc.weight,
-              grade:  null,
-              order:  gc.order,
-            })),
+        if (classGroup?.leaderId && classGroup.leaderId !== userId) {
+          const leaderEnrollment = await prisma.enrollment.findUnique({
+            where: { userId_subjectId: { userId: classGroup.leaderId, subjectId } },
           });
+          if (leaderEnrollment) {
+            const leaderConfigs = await prisma.gradeConfig.findMany({
+              where:   { enrollmentId: leaderEnrollment.id },
+              orderBy: { order: 'asc' },
+            });
+            if (leaderConfigs.length > 0) {
+              await prisma.gradeConfig.createMany({
+                data: leaderConfigs.map(gc => ({
+                  enrollmentId: enrollment.id,
+                  label:  gc.label,
+                  weight: gc.weight,
+                  grade:  null,
+                  order:  gc.order,
+                })),
+              });
+            }
+          }
         }
       }
     }
