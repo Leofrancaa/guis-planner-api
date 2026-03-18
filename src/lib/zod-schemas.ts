@@ -120,8 +120,8 @@ export const ratingSchema = z.object({
   professor:       shortStr,
   didatica:        z.number().int().min(1).max(5),
   clareza:         z.number().int().min(1).max(5),
-  disponibilidade: z.number().int().min(1).max(4),
-  pontualidade:    z.number().int().min(1).max(4),
+  disponibilidade: z.number().int().min(1).max(5),
+  pontualidade:    z.number().int().min(1).max(5),
   dificuldade:     z.number().int().min(1).max(5),
 });
 
