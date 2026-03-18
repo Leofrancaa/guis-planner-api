@@ -15,17 +15,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
 
-    // Find all class group IDs the user belongs to
-    const memberships = await prisma.classGroupMember.findMany({
-      where: { userId },
-      select: { classGroupId: true }
-    });
-    const classGroupIds = memberships.map(m => m.classGroupId);
-
     const subjects = await prisma.subject.findMany({
       where: {
         OR: [
-          { classGroupId: { in: classGroupIds } },
           { studentId: userId },
           { enrollments: { some: { userId } } },
         ],
@@ -155,6 +147,7 @@ router.post('/:id/enroll', async (req: AuthRequest, res: Response) => {
       where:  { userId_subjectId: { userId, subjectId } },
       update: {},
       create: { userId, subjectId, status: 'ENROLLED' },
+      include: { gradeConfigs: true },
     });
 
     // Backward compat: also create StudentSubject
@@ -164,7 +157,48 @@ router.post('/:id/enroll', async (req: AuthRequest, res: Response) => {
       create: { userId, subjectId },
     });
 
+    // Copy grade config from leader's enrollment if none exists
+    if (enrollment.gradeConfigs.length === 0 && subject.classGroupId) {
+      const classGroup = await prisma.classGroup.findUnique({
+        where: { id: subject.classGroupId },
+        select: { leaderId: true },
+      });
+      if (classGroup?.leaderId && classGroup.leaderId !== userId) {
+        const leaderEnrollment = await prisma.enrollment.findUnique({
+          where:   { userId_subjectId: { userId: classGroup.leaderId, subjectId } },
+          include: { gradeConfigs: { orderBy: { order: 'asc' } } },
+        });
+        if (leaderEnrollment && leaderEnrollment.gradeConfigs.length > 0) {
+          await prisma.gradeConfig.createMany({
+            data: leaderEnrollment.gradeConfigs.map(gc => ({
+              enrollmentId: enrollment.id,
+              label:  gc.label,
+              weight: gc.weight,
+              grade:  null,
+              order:  gc.order,
+            })),
+          });
+        }
+      }
+    }
+
     res.status(201).json(enrollment);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ─── DELETE unenroll from subject ─────────────────────────────────────────────
+router.delete('/:id/enroll', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId    = req.user!.userId;
+    const subjectId = req.params.id as string;
+
+    await prisma.enrollment.deleteMany({ where: { userId, subjectId } });
+    await prisma.studentSubject.deleteMany({ where: { userId, subjectId } });
+
+    res.status(204).send();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno.' });

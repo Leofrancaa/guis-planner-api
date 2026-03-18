@@ -151,6 +151,49 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/class-groups/:id/subjects — list subjects for this turma with enrollment status
+router.get('/:id/subjects', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId       = req.user!.userId;
+    const classGroupId = req.params.id as string;
+
+    // Must be a member or admin
+    const membership = await prisma.classGroupMember.findUnique({
+      where: { userId_classGroupId: { userId, classGroupId } },
+    });
+    if (!membership && req.user!.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Você precisa ser membro da turma.' });
+    }
+
+    const subjects = await prisma.subject.findMany({
+      where: { classGroupId },
+      include: {
+        enrollments: {
+          where: { userId },
+          include: { gradeConfigs: { orderBy: { order: 'asc' } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const result = subjects.map(s => ({
+      id:           s.id,
+      name:         s.name,
+      professor:    s.professor,
+      color:        s.color,
+      hours:        s.hours,
+      classStatus:  s.classStatus,
+      isEnrolled:   s.enrollments.length > 0,
+      enrollment:   s.enrollments[0] ?? null,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // POST /api/class-groups/:id/join
 router.post('/:id/join', async (req: AuthRequest, res: Response) => {
   try {
