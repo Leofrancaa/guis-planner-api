@@ -92,6 +92,40 @@ router.post('/', validate(createSubjectSchema), async (req: AuthRequest, res: Re
   }
 });
 
+// ─── PUT assign individual subject to a class group ───────────────────────────
+router.put('/:id/assign-class', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId    = req.user!.userId;
+    const subjectId = req.params.id as string;
+    const { classGroupId } = req.body;
+
+    if (!classGroupId) return res.status(400).json({ error: 'classGroupId é obrigatório.' });
+
+    // Must be leader of target class group
+    const membership = await prisma.classGroupMember.findUnique({
+      where: { userId_classGroupId: { userId, classGroupId } },
+    });
+    if (membership?.role !== 'LEADER' && req.user!.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Apenas o líder pode mover matérias para a turma.' });
+    }
+
+    // Subject must belong to this user
+    const subject = await prisma.subject.findUnique({ where: { id: subjectId } });
+    if (!subject || subject.studentId !== userId) {
+      return res.status(404).json({ error: 'Matéria não encontrada.' });
+    }
+
+    const updated = await prisma.subject.update({
+      where: { id: subjectId },
+      data:  { classGroupId, studentId: null },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ─── POST enroll in subject ───────────────────────────────────────────────────
 router.post('/:id/enroll', async (req: AuthRequest, res: Response) => {
   try {
