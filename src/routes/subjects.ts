@@ -149,44 +149,53 @@ router.post('/:id/enroll', async (req: AuthRequest, res: Response) => {
       create: { userId, subjectId, status: 'ENROLLED' },
     });
 
-    // Backward compat: also create StudentSubject
-    await prisma.studentSubject.upsert({
-      where:  { userId_subjectId: { userId, subjectId } },
-      update: {},
-      create: { userId, subjectId },
-    });
+    // Backward compat: also create StudentSubject (non-critical)
+    try {
+      await prisma.studentSubject.upsert({
+        where:  { userId_subjectId: { userId, subjectId } },
+        update: {},
+        create: { userId, subjectId },
+      });
+    } catch (e) {
+      console.error('studentSubject upsert failed (non-critical):', e);
+    }
 
-    // Copy grade config structure from leader's enrollment if this enrollment has none
-    if (subject.classGroupId) {
-      const existingConfigs = await prisma.gradeConfig.count({ where: { enrollmentId: enrollment.id } });
-      if (existingConfigs === 0) {
-        const classGroup = await prisma.classGroup.findUnique({
-          where: { id: subject.classGroupId },
-          select: { leaderId: true },
-        });
-        if (classGroup?.leaderId && classGroup.leaderId !== userId) {
-          const leaderEnrollment = await prisma.enrollment.findUnique({
-            where: { userId_subjectId: { userId: classGroup.leaderId, subjectId } },
+    // Copy grade config structure from leader's enrollment if this enrollment has none (non-critical)
+    try {
+      if (subject.classGroupId) {
+        const existingConfigs = await prisma.gradeConfig.count({ where: { enrollmentId: enrollment.id } });
+        if (existingConfigs === 0) {
+          const classGroup = await prisma.classGroup.findUnique({
+            where: { id: subject.classGroupId },
+            select: { leaderId: true },
           });
-          if (leaderEnrollment) {
-            const leaderConfigs = await prisma.gradeConfig.findMany({
-              where:   { enrollmentId: leaderEnrollment.id },
-              orderBy: { order: 'asc' },
+          if (classGroup?.leaderId && classGroup.leaderId !== userId) {
+            const leaderEnrollment = await prisma.enrollment.findUnique({
+              where: { userId_subjectId: { userId: classGroup.leaderId, subjectId } },
             });
-            if (leaderConfigs.length > 0) {
-              await prisma.gradeConfig.createMany({
-                data: leaderConfigs.map(gc => ({
-                  enrollmentId: enrollment.id,
-                  label:  gc.label,
-                  weight: gc.weight,
-                  grade:  null,
-                  order:  gc.order,
-                })),
+            if (leaderEnrollment) {
+              const leaderConfigs = await prisma.gradeConfig.findMany({
+                where:   { enrollmentId: leaderEnrollment.id },
+                orderBy: { order: 'asc' },
               });
+              if (leaderConfigs.length > 0) {
+                await prisma.gradeConfig.createMany({
+                  data: leaderConfigs.map(gc => ({
+                    enrollmentId: enrollment.id,
+                    userId,
+                    label:  gc.label,
+                    weight: gc.weight,
+                    grade:  null,
+                    order:  gc.order,
+                  })),
+                });
+              }
             }
           }
         }
       }
+    } catch (e) {
+      console.error('grade config copy failed (non-critical):', e);
     }
 
     res.status(201).json(enrollment);
